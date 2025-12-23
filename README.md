@@ -33,6 +33,19 @@ python analyze_registrations.py [optional_column_name]
 python ypaa_comitee_analyzer.py
 ```
 
+### 3. `column_similarity_analyzer.py`
+**Purpose:** Groups similar text entries in a column to identify typos, variations, or duplicates using fuzzy matching.
+
+**Features:**
+- Interactive file and column selection.
+- **Similarity Grouping:** Uses standard library `difflib` to group values that are textually similar (e.g., "Vegetarian" and "Vegetarian option").
+- **Reporting:** Shows top exact matches and clusters of similar values.
+
+**Usage:**
+```bash
+python column_similarity_analyzer.py [optional_column_name]
+```
+
 ## Requirements
 - Python 3.x
-- Standard libraries: `csv`, `re`, `glob`, `sys`, `os`, `collections`
+- Standard libraries: `csv`, `re`, `glob`, `sys`, `os`, `collections`, `difflib`

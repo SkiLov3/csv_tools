@@ -219,16 +219,108 @@ def main():
             print("Column name not found or invalid number. Please try again.")
 
         column_name = header[column_index]
-        print(f"Analyzing column: '{column_name}'")
+        print(f"Analyzing Committee Column: '{column_name}'")
+
+        # --- Select Products Column ---
+        print("\n--- Select Products/Quantity Column ---")
+        print("Available columns:")
+        for idx, col in enumerate(header):
+            print(f"{idx + 1}. {col}")
+
+        while True:
+            col_input = input("\nEnter the column that contains the registration counts/details (default 'My Products: Products'): ").strip()
+            
+            # Smart default search
+            if not col_input:
+                # search for "My Products" or "Products"
+                found_idx = -1
+                for idx, col in enumerate(header):
+                    if "products" in col.lower():
+                        found_idx = idx
+                        break
+                
+                if found_idx != -1:
+                    products_index = found_idx
+                    break
+                else:
+                    print("Could not auto-detect products column. Please specify.")
+                    continue
+            
+            if col_input.isdigit():
+                idx = int(col_input) - 1
+                if 0 <= idx < len(header):
+                    products_index = idx
+                    break
+                else:
+                    print(f"Number must be between 1 and {len(header)}.")
+                    continue
+            
+            found = False
+            for idx, col in enumerate(header):
+                if col.strip() == col_input:
+                    products_index = idx
+                    found = True
+                    break
+            
+            if found:
+                break
+            print("Column not found. Please try again.")
+
+        products_col_name = header[products_index]
+        print(f"Using Products Column: '{products_col_name}'")
+
+        # Regex for product parsing
+        product_pattern = re.compile(r'(.*?)\s*\(Amount:.*?, Quantity:\s*(\d+)(?:, Registration Type:\s*(.*?))?.*?\)')
+
+        all_groups = [] # Now this will be a list of *weighted* groups. e.g. UCYPAA, UCYPAA (if 2 regs)
         
-        all_groups = []
+        total_registrations_processed = 0
+
         for row in rows:
+            # 1. Determine Registration Count for this row
+            reg_count = 0
+            if len(row) > products_index:
+                prod_cell = row[products_index]
+                if prod_cell:
+                    lines = prod_cell.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        # Use same logic as analyze_registrations
+                        if not line or line.startswith("Total:") or line.startswith("Transaction ID:"):
+                            continue
+                        
+                        match = product_pattern.search(line)
+                        if match:
+                            p_name = match.group(1).strip()
+                            p_qty = int(match.group(2))
+                            
+                            if "Registration" in p_name:
+                                reg_count += p_qty
+            
+            # If no registrations found, treat as 0 weight? 
+            # Or should we count them as 1 "person" who didn't buy a reg?
+            # User requirement: "No ONLY count the registrations... ignore physical goods"
+            # So if reg_count is 0, we add NOTHING to the committee tally.
+            
+            if reg_count == 0:
+                continue
+
+            total_registrations_processed += reg_count
+
+            # 2. Extract Committees
             if len(row) > column_index:
                 val = row[column_index]
                 groups = extract_groups(val)
-                all_groups.extend(groups)
+                
+                # Add to master list reg_count times
+                for _ in range(reg_count):
+                    all_groups.extend(groups)
             else:
-                all_groups.append('Not Specified / Not a YPAA') # Handle short rows
+                # Row exists but no committee column data?
+                # Assume "Not Specified" for these registrations
+                for _ in range(reg_count):
+                    all_groups.append('Not Specified / Not a YPAA')
+
         
         # Calculate counts
         group_counts = Counter(all_groups)
@@ -240,10 +332,10 @@ def main():
         dissimilar_sum = 0
         no_specified_sum = 0
         yes_unspecified_sum = 0
-        total_mentions = 0
+        total_mentions_weighted = 0
         
         for group, count in group_counts.items():
-            total_mentions += count
+            total_mentions_weighted += count
             
             if group == 'Not Specified / Not a YPAA':
                 no_specified_sum += count
@@ -257,8 +349,8 @@ def main():
         # Sort desc
         filtered_items.sort(key=lambda x: x[1], reverse=True)
         
-        print("\n--- Filtered Group Mentions (Count >= 2) ---")
-        print(f"{'YPAA Group / Conference':<40} | {'Mentions'}")
+        print("\n--- Filtered Group Mentions (Weighted by Registration Count >= 2) ---")
+        print(f"{'YPAA Group / Conference':<40} | {'Weighted Count'}")
         print("-" * 60)
         filtered_count_sum = 0
         for group, count in filtered_items:
@@ -267,11 +359,11 @@ def main():
             
         print("\n--- Summary ---")
         print(f"Total Rows Processed: {len(rows)}")
-        print(f"Total Mentions Identified: {total_mentions}")
-        print(f"Mentions Grouped by a YPAA/Conference (Count >= {threshold}): {filtered_count_sum}")
-        print(f"Mentions indicating a 'Yes' but no specific YPAA/Committee: {yes_unspecified_sum}")
-        print(f"Mentions indicating 'No' or blank (Not Specified): {no_specified_sum}")
-        print(f"Mentions that were 'Very Dissimilar' (One-off entries): {dissimilar_sum}")
+        print(f"Total Registered Attendees Counted: {total_registrations_processed}")
+        print(f"Weighted Mentions Grouped by a YPAA/Conference: {filtered_count_sum}")
+        print(f"Weighted Mentions indicating a 'Yes' but no specific YPAA: {yes_unspecified_sum}")
+        print(f"Weighted Mentions indicating 'No' or blank: {no_specified_sum}")
+        print(f"Weighted Mentions that were 'Very Dissimilar' (One-off entries): {dissimilar_sum}")
 
     except Exception as e:
         print(f"Error processing file: {e}")
