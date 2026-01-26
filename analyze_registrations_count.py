@@ -47,10 +47,13 @@ def analyze_csv(filepath, column_name=None):
     breakdown = {}
     rows_without_matches = 0
     
-    # Regex to match: "Product Name (Amount: ..., Quantity: N, ...)"
+    # Regex to match: "Product Name (Amount: XX.XX USD, Quantity: N, ...)"
     product_pattern = re.compile(
-        r'(.*?)\s*\(Amount:.*?, Quantity:\s*(\d+)(?:, Registration Type:\s*(.*?))?.*?\)'
+        r'(.*?)\s*\(Amount:\s*([\d\.]+).*?, Quantity:\s*(\d+)(?:, Registration Type:\s*([^,)]+))?.*?\)'
     )
+
+    price_counts = {0: 0, 20: 0, 25: 0, 30: 0, 35: 0, 40: 0, 50: 0}
+    other_price_counts = {}
 
     for row in rows:
         total_rows += 1
@@ -71,14 +74,28 @@ def analyze_csv(filepath, column_name=None):
             if match:
                 found_match = True
                 name = match.group(1).strip()
-                quantity = int(match.group(2))
-                reg_type = match.group(3).strip() if match.group(3) else "Unspecified"
+                try:
+                    price_val = float(match.group(2))
+                    # Treat 20.00 as 20
+                    if price_val.is_integer():
+                        price_val = int(price_val)
+                except ValueError:
+                    price_val = 0
+
+                quantity = int(match.group(3))
+                reg_type = match.group(4).strip() if match.group(4) else "Unspecified"
                 
                 # Only count items that look like Registrations
                 if "Registration" in name:
                     total_registrations += quantity
                     key = f"{name} - {reg_type}"
                     breakdown[key] = breakdown.get(key, 0) + quantity
+
+                    # Track by price
+                    if price_val in price_counts:
+                        price_counts[price_val] += quantity
+                    else:
+                        other_price_counts[price_val] = other_price_counts.get(price_val, 0) + quantity
         
         # Track rows with non-empty content but no pattern matches
         if cell_value.strip() and not found_match:
@@ -90,6 +107,16 @@ def analyze_csv(filepath, column_name=None):
     if rows_without_matches > 0:
         print(f"Rows with content but no pattern matches: {rows_without_matches}")
     
+    print("\nRegistrations by Price Point:")
+    for price in [0, 20, 25, 30, 35, 40, 50]:
+        count = price_counts.get(price, 0)
+        print(f"  ${price}: {count}")
+    
+    if other_price_counts:
+        print("  Other Prices:")
+        for price, count in sorted(other_price_counts.items()):
+            print(f"    ${price}: {count}")
+
     print("\nBreakdown by Type:")
     for key, count in sorted(breakdown.items(), key=lambda x: x[1], reverse=True):
         print(f"  {key}: {count}")
